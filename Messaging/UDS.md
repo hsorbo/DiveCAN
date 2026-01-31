@@ -99,13 +99,13 @@ The following DIDs are defined in firmware and confirmed via implementation:
 |------------|------------------------------|--------------|-------|
 | Unknown | `0xC2000080` – `0xC2000FFF` | `0x00000080` (FLASH) | Size align **8** |
 | Log (encrypted) | `0xC3001000` – `0xC3FFFFFF` | `0x00010000` (FLASH)| Size align **12** (12 is size of log entry)|
-| Transfer security context | `0xC5000000` – `0xC500007F` | `0x1FFFF7F0` (MCU) | Size align **0**|
+| Log transfer digest | `0xC5000000` – `0xC500007F` | `0x1FFFF7F0` (MCU) | Size align **0**|
 > **Note:** The address range is treated as *virtual* by higher-level code; only ranges matching these constraints are accepted by the device. Misaligned or out-of-range requests will typically return `RequestOutOfRange (0x31)`.
 
-#### Transfer security context (SOLO)
+#### Log transfer digest (SOLO)
 
-The transfer security context region exposes a fixed‑format structure containing
-per‑transfer integrity data and encryption context. It is used when validating and
+The Log transfer digest region exposes a fixed‑format structure containing
+integrity data and encryption context. It is used when validating and
 decoding downloaded log data.
 
 | Offset | Size | Field | Description |
