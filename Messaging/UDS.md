@@ -10,12 +10,12 @@ UDS runs on top of **ISO-TP (ISO-15765-2)** and supports multi-frame transfers, 
 
 UDS messages are transmitted over ISO-TP using Single Frame (SF), First Frame (FF), Consecutive Frame (CF), and Flow Control (FC) formats.
 
-### ⚠️ Shearwater Flow Control Quirk
+## Interoperability Quirks
 
-Shearwater devices transmit **Flow Control frames with dst = 0xFF**.
-This violates ISO-TP. Standards-compliant stacks may reject these frames; DiveCAN implementations must **accept FC frames regardless of DLC**.
+- Shearwater handsets respond with flow control (FC) to a fixed address (`0xFF`).
+- Shearwater handsets do not wait for flow control (FC) before sending the first consecutive frame.
+- Shearwater uses UDS extended addressing (N_AE) set to `0x00`, resulting in the first byte of the UDS payload always being `0x00`.
 
----
 
 ## Negative Response Codes
 
@@ -61,31 +61,31 @@ Both services operate on 16‑bit Data Identifiers (DIDs).
 DiveCAN only uses one RDBI per request.
 
 
-## Known/Seen Data Identifiers (DIDs)
+## Known Data Identifiers (DIDs)
 
-The following DIDs are currently known / suspected from reverse‑engineering:
+The following DIDs are defined in firmware and confirmed via implementation:
 
-| DID       | Name                               | Access | Comment                                       |
-|-----------|------------------------------------|--------|-----------------------------------------------|
-| `0x8010`  | `Unknown`                          | R      | Likely serial-related                         |
-| `0x8011`  | `SoftwareVersion`                  | R      | —                                             |
-| `0x8020`  | `FirmwareDownload`                 | R      | [0] suppored, [1-4] address, [5-9] length     |
-| `0x8021`  | `LogUpload`                        | R      | [0] suppored, [1-4] address, [5-9] length     |
-| `0x8200`  | `Serial`                           | R/W    | Device serial number                          |
-| `0x8201`  | `Unknown`                          | R      | —                                             |
-| `0x8202`  | `Unknown`                          | R/W    | —                                             |
-| `0x8203`  | `Unknown`                          | R      | —                                             |
-| `0x8204`  | `Unknown`                          | R/W    | —                                             |
-| `0x8205`  | `Unknown`                          | R      | Cell ADC calibration probably                 |
-| `0x8206`  | `Unknown`                          | R      | —                                             |
-| `0x8209`  | `Unknown`                          | R      | Likely firmware checksum/CRC                  |
-| `0x820A`  | `Unknown`                          | R      | Battery calibration probably                  |
-| `0x820B`  | `Unknown`                          | R      | DES‑encrypted data,                           |
-| `0x9100`  | `UserSettingCount`                 | R      | Number of user settings                       |
-| `0x9110`  | `UserSettingInfoBase`              | R      | Label, type, editable                         |
-| `0x9130`  | `UserSettingValueBase`             | R      | Value/max for setting                         |
-| `0x9150`  | `UserSettingLabelBase`             | R      | Label for selection                           |
-| `0x9350`  | `UserSettingSaveBase`              | W      | Commit settings                               |
+| DID       | Name                                   | Access | Comment                                                                 |
+|-----------|----------------------------------------|--------|-------------------------------------------------------------------------|
+| `0x8010`  | Serial number (ASCII)                  | R      | 8 bytes                                                                 |
+| `0x8011`  | Firmware version (ASCII)               | R      | 3 bytes                                                                 |
+| `0x8020`  | Firmware download capability           | R      | Base address and maximum writable size                                  |
+| `0x8021`  | Log upload capability                  | R      | Base address and readable size                                          |
+| `0x8200`  | Serial number (binary)                 | R/W    | 4 bytes                                                                 |
+| `0x8201`  | Device identifier                      | R      | 12 bytes                                                                |
+| `0x8202`  | Encrypted configuration blob           | R/W    | 16 bytes                                                                |
+| `0x8203`  | O₂ cell calibration state (SOLO)       | R      | 3 calibration values + validity flags                                   |
+| `0x8204`  | O₂ cell calibration request (SOLO)     | W      | Triggers calibration                                                    |
+| `0x8205`  | O₂ cell zero‑offsets (SOLO)            | R      | Per‑cell ADC offsets                                                    |
+| `0x8206`  | O₂ zero‑offset calibration trigger (SOLO) | W   | Triggers zero‑offset calibration                                        |
+| `0x8209`  | Firmware CRC                           | R      | CRC32                                                                   |
+| `0x820A`  | Voltage reference calibration (SOLO)   | R/W    | ADC reference value                                                     |
+| `0x820B`  | Control configuration (SOLO)           | R      | Packed control and limit flags                                          |
+| `0x9100`  | User setting count                     | R      | Number of user settings                                                 |
+| `0x9110`  | User setting metadata (base)           | R      | Label, type, editable                                                   |
+| `0x9130`  | User setting value (base)              | R      | Value/max for setting                                                   |
+| `0x9150`  | User setting label (base)              | R      | Label for selection                                                     |
+| `0x9350`  | User setting commit                    | W      | Commit settings                                                         |
 
 ---
 
@@ -93,16 +93,32 @@ The following DIDs are currently known / suspected from reverse‑engineering:
 
 `RequestUpload (0x35)` is used to **read spi flash/MCU data** on SOLO
 
-### Region Summary
+### SOLO
 
 | Region     | Virtual Address Range        | Real Address | Notes |
 |------------|------------------------------|--------------|-------|
-| **BLOCK1** | `0xC2000080` – `0xC2000FFF` | `0x00000080` (FLASH) | Addr align **8**; Size min **8**; Size align **8** |
-| **BLOCK2** | `0xC3001000` – `0xC3FFFFFF` | `0x00010000` (FLASH)| Addr align **0**; Size min **12**; Size align **12** |
-| **BLOCK3** | `0xC5000000` – `0xC500007F` | `0x1FFFF7F0` (MCU) | Addr align **0**; Size min **1**; Size align **0**, Probably for reading the 96-bit unique device ID. ++? |
+| Unknown | `0xC2000080` – `0xC2000FFF` | `0x00000080` (FLASH) | Size align **8** |
+| Log (encrypted) | `0xC3001000` – `0xC3FFFFFF` | `0x00010000` (FLASH)| Size align **12** (12 is size of log entry)|
+| Transfer security context | `0xC5000000` – `0xC500007F` | `0x1FFFF7F0` (MCU) | Size align **0**|
 > **Note:** The address range is treated as *virtual* by higher-level code; only ranges matching these constraints are accepted by the device. Misaligned or out-of-range requests will typically return `RequestOutOfRange (0x31)`.
 
----
+#### Transfer security context (SOLO)
+
+The transfer security context region exposes a fixed‑format structure containing
+per‑transfer integrity data and encryption context. It is used when validating and
+decoding downloaded log data.
+
+| Offset | Size | Field | Description |
+|------:|-----:|-------|-------------|
+| `0x00` | 4 | CRC32 | CRC32 of the transferred **encrypted** log data |
+| `0x04` | 1 | Length | Length field (always `0x10`, decimal 16) |
+| `0x05` | 4 | RTC timestamp | Timestamp used as part of the log encryption context |
+| `0x09` | 12 | Device ID | Device identifier derived from the MCU unique ID |
+
+**Notes:**
+- The CRC32 represents the checksum of the **encrypted data as transferred** and is validated **after** the upload completes.
+- The RTC timestamp and device ID bind logs to a specific device and time context.
+
 
 ## RequestDownload (Firmware Upload)
 
@@ -147,9 +163,9 @@ Number of available settings.
 
 - `label`    : raw bytes, usually ASCII or UTF‑8
 - `kind`     :
-  - `0` = Text
+  - `0` = Integer (hex if divisor = 0, scaled decimal otherwise)
   - `1` = Selection
-  - `2` = Number
+  - `2` = Scaled (same encoding as Integer; semantic distinction)
 - `editable` : `0` = read‑only, `1` = editable
 
 #### SettingValue(i) (`0x9130 + i`)
@@ -173,8 +189,11 @@ Human‑readable label for the selection option `j` of setting `i`.
 
 Setting labels are only used for `Selection` type settings, and are not required for `Text` / `Number`.
 
-#### SettingSave (`0x9350`)
+#### SettingSave (`0x9350 + index`)
 
-TODO
+Writes a new value for a user setting.
+
+- The DID is **per‑setting**, encoded as `0x9350 + index`.
+- The payload contains **raw input bytes** (1–8 bytes).
 
 ---
